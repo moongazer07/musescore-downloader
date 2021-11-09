@@ -9,8 +9,10 @@ import { fetchMscz, setMscz, MSCZ_URL_SYM } from './mscz'
 import { loadMscore, INDV_DOWNLOADS, WebMscore } from './mscore'
 import { ScoreInfo, ScoreInfoHtml, ScoreInfoObj, getActualId } from './scoreinfo'
 import { getLibreScoreLink } from './librescore-link'
-import { escapeFilename } from './utils'
+import { escapeFilename, DISCORD_URL, fetchBuffer } from './utils'
 import { isNpx, getVerInfo, getSelfVer } from './npm-data'
+import { getFileUrl } from './file'
+import { exportPDF } from './pdf'
 import i18n from './i18n'
 
 const inquirer: typeof import('inquirer') = require('inquirer')
@@ -21,12 +23,106 @@ const SCORE_URL_PREFIX = 'https://(s.)musescore.com/'
 const SCORE_URL_REG = /https:\/\/(s\.)?musescore\.com\//
 const EXT = '.mscz'
 
+type ExpDlType = 'midi' | 'mp3' | 'pdf'
+
 interface Params {
   fileInit: string;
   confirmed: boolean;
+  useExpDL: boolean;
+  expDlTypes: ExpDlType[];
   part: number;
   types: number[];
   dest: string;
+}
+
+/**
+ * Prompt for destination directory
+ */
+const promptDest = async () => {
+  const { dest } = await inquirer.prompt<Params>({
+    type: 'input',
+    name: 'dest',
+    message: 'Destination Directory:',
+    validate (input: string) {
+      return input && fs.statSync(input).isDirectory()
+    },
+    default: process.cwd(),
+  })
+  return dest
+}
+
+const createSpinner = () => {
+  return ora({
+    text: i18n('PROCESSING')(),
+    color: 'blue',
+    spinner: 'bounce',
+    indent: 0,
+  }).start()
+}
+
+const checkboxValidate = (input: number[]) => {
+  return input.length >= 1
+}
+
+/**
+ * MIDI/MP3/PDF express download using the file API (./file.ts)
+ */
+const expDL = async (scoreinfo: ScoreInfoHtml) => {
+  // print a blank line
+  console.log()
+
+  // filetype selection
+  const { expDlTypes } = await inquirer.prompt<Params>({
+    type: 'checkbox',
+    name: 'expDlTypes',
+    message: 'Filetype Selection',
+    choices: [
+      'midi', 'mp3', 'pdf', // ExpDlType
+      new inquirer.Separator(),
+      new inquirer.Separator(
+        'Unavailable in express download\n' +
+        ' - MSCZ\n' +
+        ' - MusicXML\n' +
+        ' - FLAC/OGG Audio\n' +
+        ' - Individual Parts',
+      ),
+    ],
+    validate: checkboxValidate,
+    pageSize: Infinity,
+  })
+
+  // destination directory selection
+  const dest = await promptDest()
+  const spinner = createSpinner()
+
+  await Promise.all(
+    expDlTypes.map(async (type) => {
+      // download/generate file data
+      let fileData: Buffer
+      switch (type) {
+        case 'midi':
+        case 'mp3': {
+          const fileUrl = await getFileUrl(scoreinfo.id, type)
+          fileData = await fetchBuffer(fileUrl)
+          break
+        }
+
+        case 'pdf': {
+          fileData = Buffer.from(
+            await exportPDF(scoreinfo, scoreinfo.sheet),
+          )
+          break
+        }
+      }
+
+      // save to filesystem
+      const f = path.join(dest, `${scoreinfo.fileName}.${type}`)
+      await fs.promises.writeFile(f, fileData)
+      spinner.info(`Saved ${chalk.underline(f)}`)
+    }),
+  )
+
+  spinner.succeed('OK')
 }
 
 void (async () => {
@@ -87,8 +183,23 @@ void (async () => {
     })
     if (!confirmed) return
 
+    // print a blank line
+    console.log()
+
+    // ask for express download
+    const { useExpDL } = await inquirer.prompt<Params>({
+      type: 'confirm',
+      name: 'useExpDL',
+      prefix: `${chalk.blueBright('ℹ')} ` +
+        'MIDI/MP3/PDF express download is now available.\n ',
+      message: '🚀 Give it a try?',
+      default: true,
+    })
+    if (useExpDL) return expDL(scoreinfo as ScoreInfoHtml)
+
     // initiate LibreScore link request
     librescoreLink = getLibreScoreLink(scoreinfo)
+    librescoreLink.catch(() => '') // silence this unhandled Promise rejection
 
     // print a blank line to the terminal
     console.log()
@@ -96,12 +207,7 @@ void (async () => {
     scoreinfo = new ScoreInfoObj(0, path.basename(fileInit, EXT))
   }
 
-  const spinner = ora({
-    text: i18n('PROCESSING')(),
-    color: 'blue',
-    spinner: 'bounce',
-    indent: 0,
-  }).start()
+  const spinner = createSpinner()
 
   let score: WebMscore
   let metadata: import('webmscore/schemas').ScoreMetadata
@@ -133,6 +239,10 @@ void (async () => {
     spinner.info('Score loaded by webmscore')
   } catch (err) {
     spinner.fail(err.message)
+    spinner.info(
+      'Send your URL to the #dataset-patcher channel in the LibreScore Community Discord server:\n  ' +
+      DISCORD_URL,
+    )
     return
   }
   spinner.succeed('OK\n')
@@ -160,22 +270,12 @@ void (async () => {
     name: 'types',
     message: 'Filetype Selection',
     choices: typeChoices,
-    validate (input: number[]) {
-      return input.length >= 1
-    },
+    validate: checkboxValidate,
   })
   const filetypes = types.map(i => INDV_DOWNLOADS[i])
 
   // destination directory
-  const { dest } = await inquirer.prompt<Params>({
-    type: 'input',
-    name: 'dest',
-    message: 'Destination Directory:',
-    validate (input: string) {
-      return input && fs.statSync(input).isDirectory()
-    },
-    default: process.cwd(),
-  })
+  const dest = await promptDest()
 
   // export files
   const fileName = scoreinfo.fileName || await score.titleFilenameSafe()
@@ -195,7 +295,7 @@ void (async () => {
   if (!isNpx()) {
     const { installed, latest, isLatest } = await getVerInfo()
     if (!isLatest) {
-      console.log(chalk.yellowBright(`\nYour installed version (${installed}) of the musescore-downloader CLI is not the latest one (${latest})!\nRun npm i -g musescore-downloader to update.`))
+      console.log(chalk.yellowBright(`\nYour installed version (${installed}) of the musescore-downloader CLI is not the latest one (${latest})!\nRun npm i -g musescore-downloader@${latest} to update.`))
     }
   }
 })()

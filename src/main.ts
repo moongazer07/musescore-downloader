@@ -34,11 +34,11 @@ const main = (): void => {
 
   btnList.add({
     name: i18n('DOWNLOAD')('PDF'),
-    action: BtnAction.process(() => downloadPDF(scoreinfo, new SheetInfoInPage(document)), fallback, 3 * 60 * 1000 /* 3min */),
+    action: BtnAction.process(() => downloadPDF(scoreinfo, new SheetInfoInPage(document), saveAs), fallback, 3 * 60 * 1000 /* 3min */),
   })
 
   btnList.add({
-    name: i18n('DOWNLOAD')('MusicXML'),
+    name: i18n('DOWNLOAD')('MXL'),
     action: BtnAction.mscoreWindow(scoreinfo, async (w, score) => {
       const mxl = await score.saveMxl()
       const data = new Blob([mxl])
@@ -137,8 +137,10 @@ const main = (): void => {
     action: BtnAction.openUrl(() => getLibreScoreLink(scoreinfo)),
     tooltip: 'BETA',
     icon: ICON.LIBRESCORE,
+    lightTheme: true,
   })
 
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
   btnList.commit(BtnListMode.InPage)
 }
 

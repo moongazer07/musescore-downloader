@@ -41,7 +41,7 @@ new Promise(resolve => {
   const loaderOutro = '})()'.repeat(stackN)
   const mockUrl = "https://c.amazon-adsystem.com/aax2/apstag.js"
 
-  setTimeout(`${loaderIntro}const d=new Image();window['${id}'](d);delete window['${id}'];document.body.prepend(d)${loaderOutro}//# sourceURL=${mockUrl}`)
+  Function(`${loaderIntro}const d=new Image();window['${id}'](d);delete window['${id}'];document.body.prepend(d)${loaderOutro}//# sourceURL=${mockUrl}`)()
 }).then(d => {
   d.style.display = 'none';
   d.src = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';

@@ -2,6 +2,8 @@
 import isNodeJs from 'detect-node'
 import { isGmAvailable, _GM } from './gm'
 
+export const DISCORD_URL = 'https://discord.gg/gSsTUvJmD8'
+
 export const escapeFilename = (s: string): string => {
   return s.replace(/[\s<>:{}"/\\|?*~.\0\cA-\cZ]+/g, '_')
 }
@@ -28,6 +30,9 @@ export const getFetch = (): typeof fetch => {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const nodeFetch = require('node-fetch')
     return (input: RequestInfo, init?: RequestInit) => {
+      if (typeof input === 'string' && !input.startsWith('http')) { // fix: Only absolute URLs are supported
+        input = 'https://musescore.com' + input
+      }
       init = Object.assign({ headers: NODE_FETCH_HEADERS }, init)
       // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return nodeFetch(input, init)
@@ -36,9 +41,15 @@ export const getFetch = (): typeof fetch => {
 }
 
 export const fetchData = async (url: string, init?: RequestInit): Promise<Uint8Array> => {
-  const r = await fetch(url, init)
+  const _fetch = getFetch()
+  const r = await _fetch(url, init)
   const data = await r.arrayBuffer()
   return new Uint8Array(data)
+}
+
+export const fetchBuffer = async (url: string, init?: RequestInit): Promise<Buffer> => {
+  const d = await fetchData(url, init)
+  return Buffer.from(d.buffer)
 }
 
 export const assertRes = (r: Response): void => {
@@ -111,7 +122,7 @@ export const getUnsafeWindow = (): Window => {
   return window.eval('window') as Window
 }
 
-export const console: Console = (window || global).console // Object.is(window.console, unsafeWindow.console) == false
+export const console: Console = (typeof window !== 'undefined' ? window : global).console // Object.is(window.console, unsafeWindow.console) == false
 
 export const windowOpenAsync = (targetEl: Element | undefined, ...args: Parameters<Window['open']>): Promise<Window | null> => {
   return getSandboxWindowAsync(targetEl).then(w => w.open(...args))
