@@ -38,7 +38,7 @@
   ],
   "dependencies": {
     "@librescore/fonts": "^0.4.0",
-    "@librescore/sf3": "^0.3.0",
+    "@librescore/sf3": "^0.6.1",
     "detect-node": "^2.0.4",
     "inquirer": "^7.3.3",
     "node-fetch": "^2.6.1",
