@@ -42,7 +42,7 @@
     "detect-node": "^2.0.4",
     "inquirer": "^7.3.3",
     "node-fetch": "^2.6.1",
-    "ora": "^5.1.0",
+    "ora": "^5.4.1",
     "webmscore": "^0.18.0"
   },
   "devDependencies": {
